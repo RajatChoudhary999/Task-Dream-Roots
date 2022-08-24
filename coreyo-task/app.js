@@ -114,6 +114,12 @@ app.get("/logout", async (req, res) => {
 		return res.status(400).send("Please Enter token and email");
 	}
 
+	//Check if token matches or not
+	let tokenExist = await User.findOne({ token: token });
+	if (!tokenExist) {
+		return res.status(400).send("Invalid Token");
+	}
+
 	let deleteToken = await User.updateMany(
 		{ email: email },
 		{ $unset: { token: "" } }
@@ -122,7 +128,7 @@ app.get("/logout", async (req, res) => {
 		return res.status(400).json("Invalid Token");
 	}
 
-	return res.status(200).json("You are logged out");
+	return res.status(200).json("Logout Successfully are logged out");
 });
 
 app.get("/news", async (req, res) => {
