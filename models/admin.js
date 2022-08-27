@@ -2,7 +2,7 @@
 const mongoose = require("mongoose");
 
 // User Modal Schema
-const userSchema = new mongoose.Schema(
+const adminSchema = new mongoose.Schema(
 	{
 		name: { type: String, default: null },
 		email: { type: String, unique: true },
@@ -13,9 +13,9 @@ const userSchema = new mongoose.Schema(
 );
 
 // Creating model object
-const User = mongoose.model("user", userSchema);
+const Admin = mongoose.model("admin", adminSchema);
 
 // Exporting our model object
 module.exports = {
-	User,
+	Admin,
 };

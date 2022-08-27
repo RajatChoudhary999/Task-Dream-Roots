@@ -8,13 +8,14 @@ const bcrypt = require("bcrypt");
 
 const dotenv = require("dotenv");
 
-const news = require("./news");
-const weather = require("./weather");
+// const news = require("./functions/news");
+// const weather = require("./functions/weather");
 
-//Mongoose connection and functionality
-const { User } = require("./model");
+//Mongoose Schema, connection and functionality
+const { User } = require("./models/user");
+const { Admin } = require("./models/admin");
 const mongoose = require("mongoose");
-const URI = "mongodb://localhost:27017/task";
+const URI = "mongodb://localhost:27017/dreamRoots";
 
 dotenv.config();
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -39,12 +40,12 @@ app.get("/", async (req, res) => {
 	res.send("Hello World");
 });
 
-app.get("/signup", async (req, res) => {
+app.post("/add_user_details", async (req, res) => {
 	const newUser = req.body;
 
 	//Validate user input
-	if (!(newUser.name && newUser.email && newUser.password)) {
-		return res.status(400).send("All input is required");
+	if (!(newUser.name && newUser.email)) {
+		return res.status(400).send("Name and email is required");
 	}
 
 	//Check if user already exist
@@ -53,21 +54,56 @@ app.get("/signup", async (req, res) => {
 		return res.status(409).send("User Already Exist. Please Login");
 	}
 
-	//Encrypting user password
-	encryptedPassword = await bcrypt.hash(newUser.password, 10);
-
+	//Add user details
 	const user = await User.create({
 		name: newUser.name,
+		age: newUser.age,
 		email: newUser.email,
+		city: newUser.city,
+		phone: newUser.phone,
+	});
+
+	res.status(201).send("Details Added Successfully");
+});
+
+app.post("/create_admin", async (req, res) => {
+	const newAdmin = req.body;
+
+	//Validate Admin input
+	if (
+		!(newAdmin.name && newAdmin.email && newAdmin.password && newAdmin.secret)
+	) {
+		return res.status(400).send("All input is required");
+	}
+
+	if (newAdmin.secret !== process.env.SECRET_KEY) {
+		return res.status(400).send("Secret Key Doesn't match");
+	}
+
+	//Check if Admin already exist
+	let ifEmailExist = await Admin.findOne({ email: newAdmin.email });
+	if (ifEmailExist) {
+		return res
+			.status(409)
+			.send("Admin with name or email Already Exist. Please Login");
+	}
+
+	//Encrypting Admin password
+	encryptedPassword = await bcrypt.hash(newAdmin.password, 10);
+
+	//Create new Admin
+	const admin = await Admin.create({
+		name: newAdmin.name,
+		email: newAdmin.email,
 		password: encryptedPassword,
 	});
 
-	res.status(201).send(user);
+	res.status(201).send(admin);
 });
 
-app.get("/login", async (req, res) => {
+app.post("/admin_login", async (req, res) => {
 	try {
-		//Getting User
+		//Getting Admin
 		const { email, password } = req.body;
 
 		//Validate user input
@@ -75,14 +111,14 @@ app.get("/login", async (req, res) => {
 			return res.status(400).send("All input is required");
 		}
 
-		//Validate if user exists in our database
-		const user = await User.findOne({ email });
-		if (!user) {
-			return res.status(404).send("User Not Found with this email");
+		//Validate if admin exists in our database
+		const admin = await Admin.findOne({ email });
+		if (!admin) {
+			return res.status(404).send("Admin Not Found with this email");
 		}
 
 		//Checking the password
-		let checkPassword = await bcrypt.compare(password, user.password);
+		let checkPassword = await bcrypt.compare(password, admin.password);
 		if (!checkPassword) {
 			return res.status(400).send("Incorrect Password");
 		}
@@ -91,22 +127,22 @@ app.get("/login", async (req, res) => {
 		const token = jwt.sign(email, process.env.TOKEN_KEY);
 
 		//Saving the token in the db
-		await User.updateOne(
+		await Admin.updateOne(
 			{ email: email },
 			{ $set: { token: token } },
 			{ multi: true }
 		);
 
-		//saving user token
-		user.token = token;
+		//saving admin token
+		admin.token = token;
 
-		return res.status(200).json(user);
+		return res.status(200).json(admin);
 	} catch (err) {
 		console.log(err);
 	}
 });
 
-app.get("/logout", async (req, res) => {
+app.post("/admin_logout", async (req, res) => {
 	let { token, email } = req.body;
 
 	//Check if token is passed in request header
@@ -115,12 +151,12 @@ app.get("/logout", async (req, res) => {
 	}
 
 	//Check if token matches or not
-	let tokenExist = await User.findOne({ token: token });
+	let tokenExist = await Admin.findOne({ token: token });
 	if (!tokenExist) {
 		return res.status(400).send("Invalid Token");
 	}
 
-	let deleteToken = await User.updateMany(
+	let deleteToken = await Admin.updateMany(
 		{ email: email },
 		{ $unset: { token: "" } }
 	);
@@ -128,10 +164,10 @@ app.get("/logout", async (req, res) => {
 		return res.status(400).json("Invalid Token");
 	}
 
-	return res.status(200).json("Logout Successfully are logged out");
+	return res.status(200).json("Successfully are logged out");
 });
 
-app.get("/news", async (req, res) => {
+app.get("/get_users", async (req, res) => {
 	let token = req.body.token;
 
 	//Check if token is passed in request header
@@ -140,25 +176,14 @@ app.get("/news", async (req, res) => {
 	}
 
 	//Check if the token exists in db
-	const tokenExist = await User.findOne({ token });
+	const tokenExist = await Admin.findOne({ token });
 	if (!tokenExist) {
 		return res.status(400).send("Invalid token");
 	}
 
-	let topic = req.query.search;
-	if (!topic) {
-		return res.status(400).send("Please Enter the topic as query params");
-	}
+	let users = await User.find({});
 
-	let newsReport = await news.getNews(topic);
-
-	return res.send(newsReport);
-});
-
-//Weather Report Route Does not need Authentication
-app.get("/weather", async (req, res) => {
-	let weatherReport = await weather.getWeatherReport();
-	return res.send(weatherReport);
+	return res.send(users);
 });
 
 app.listen(Port, () => {
